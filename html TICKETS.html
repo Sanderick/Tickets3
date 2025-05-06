@@ -1,0 +1,193 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Sistema de Tickets</title>
+  <!-- Bootstrap -->
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+  <!-- FontAwesome -->
+  <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
+  <!-- SweetAlert2 -->
+  <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
+  <style>
+    body { padding-top: 60px; }
+    .hidden { display: none; }
+  </style>
+</head>
+<body>
+  <!-- Login / Registro -->
+  <div class="container" id="auth-container">
+    <h2 class="text-center">Login / Registro</h2>
+    <div class="mb-3">
+      <input type="email" id="email" class="form-control" placeholder="Correo electrónico">
+    </div>
+    <div class="mb-3">
+      <input type="password" id="password" class="form-control" placeholder="Contraseña">
+    </div>
+    <button class="btn btn-primary w-100" onclick="login()">Iniciar sesión</button>
+    <button class="btn btn-secondary w-100 mt-2" onclick="register()">Registrarse</button>
+  </div>
+
+  <!-- Dashboard -->
+  <div class="container hidden" id="dashboard">
+    <div class="d-flex justify-content-between align-items-center mb-4">
+      <h2>Tickets</h2>
+      <div>
+        <span id="user-email" class="me-3"></span>
+        <button class="btn btn-danger btn-sm" onclick="logout()">Cerrar sesión</button>
+      </div>
+    </div>
+
+    <button class="btn btn-success mb-3" onclick="showCreateForm()">
+      <i class="fas fa-plus"></i> Crear Ticket
+    </button>
+
+    <!-- Formulario de creación -->
+    <div id="ticket-form" class="mb-4 hidden">
+      <input type="text" id="titulo" class="form-control mb-2" placeholder="Título del pedido">
+      <input type="text" id="descripcion" class="form-control mb-2" placeholder="Descripción">
+      <select id="prioridad" class="form-select mb-2">
+        <option value="alta">Alta</option>
+        <option value="media">Media</option>
+        <option value="baja">Baja</option>
+      </select>
+      <select id="tipo" class="form-select mb-2">
+        <option value="empaques">Pedido de empaques</option>
+        <option value="insumos">Pedido de insumos</option>
+      </select>
+      <button class="btn btn-primary w-100" onclick="crearTicket()">Guardar Ticket</button>
+    </div>
+
+    <!-- Lista de tickets -->
+    <div id="ticket-list" class="row"></div>
+  </div>
+
+  <!-- Firebase & Lógica -->
+  <script type="module">
+    import { initializeApp } from "https://www.gstatic.com/firebasejs/10.11.0/firebase-app.js";
+    import { getAuth, createUserWithEmailAndPassword, signInWithEmailAndPassword, onAuthStateChanged, signOut } from "https://www.gstatic.com/firebasejs/10.11.0/firebase-auth.js";
+    import { getFirestore, collection, addDoc, query, orderBy, onSnapshot } from "https://www.gstatic.com/firebasejs/10.11.0/firebase-firestore.js";
+
+    const firebaseConfig = {
+      apiKey: "AIzaSyCpM1A7g9v39hPs-uGFQneTgNZfSB95aC4",
+      authDomain: "tickets-b801f.firebaseapp.com",
+      projectId: "tickets-b801f",
+      storageBucket: "tickets-b801f.appspot.com",
+      messagingSenderId: "905490927585",
+      appId: "1:905490927585:web:44f02cdb2a55a7a369cca0"
+    };
+
+    const app = initializeApp(firebaseConfig);
+    const auth = getAuth(app);
+    const db = getFirestore(app);
+
+    const authContainer = document.getElementById('auth-container');
+    const dashboard = document.getElementById('dashboard');
+    const userEmailSpan = document.getElementById('user-email');
+
+    onAuthStateChanged(auth, user => {
+      if (user) {
+        authContainer.classList.add('hidden');
+        dashboard.classList.remove('hidden');
+        userEmailSpan.textContent = user.email;
+        cargarTickets();
+      } else {
+        authContainer.classList.remove('hidden');
+        dashboard.classList.add('hidden');
+      }
+    });
+
+    window.register = async () => {
+      const email = document.getElementById('email').value;
+      const password = document.getElementById('password').value;
+      try {
+        await createUserWithEmailAndPassword(auth, email, password);
+        Swal.fire('Registro exitoso', '', 'success');
+      } catch (error) {
+        Swal.fire('Error', error.message, 'error');
+      }
+    };
+
+    window.login = async () => {
+      const email = document.getElementById('email').value;
+      const password = document.getElementById('password').value;
+      try {
+        await signInWithEmailAndPassword(auth, email, password);
+      } catch (error) {
+        Swal.fire('Error', error.message, 'error');
+      }
+    };
+
+    window.logout = async () => {
+      await signOut(auth);
+    };
+
+    window.showCreateForm = () => {
+      document.getElementById('ticket-form').classList.toggle('hidden');
+    };
+
+    window.crearTicket = async () => {
+      const titulo = document.getElementById('titulo').value;
+      const descripcion = document.getElementById('descripcion').value;
+      const prioridad = document.getElementById('prioridad').value;
+      const tipo = document.getElementById('tipo').value;
+
+      if (!titulo || !descripcion) {
+        Swal.fire('Completa todos los campos', '', 'warning');
+        return;
+      }
+
+      try {
+        await addDoc(collection(db, 'tickets'), {
+          titulo,
+          descripcion,
+          prioridad,
+          tipo,
+          estado: 'pendiente',
+          fecha: new Date().toISOString()
+        });
+        Swal.fire('Ticket creado', '', 'success');
+        document.getElementById('ticket-form').classList.add('hidden');
+        document.getElementById('titulo').value = '';
+        document.getElementById('descripcion').value = '';
+      } catch (error) {
+        Swal.fire('Error', error.message, 'error');
+      }
+    };
+
+    function cargarTickets() {
+      const q = query(collection(db, 'tickets'), orderBy('fecha', 'desc'));
+      const ticketList = document.getElementById('ticket-list');
+      onSnapshot(q, snapshot => {
+        ticketList.innerHTML = '';
+        snapshot.forEach(doc => {
+          const data = doc.data();
+          const card = document.createElement('div');
+          card.className = 'col-md-4';
+          card.innerHTML = `
+            <div class="card mb-3">
+              <div class="card-body">
+                <h5 class="card-title">${data.titulo}</h5>
+                <p class="card-text">${data.descripcion}</p>
+                <span class="badge bg-${getBadgeColor(data.prioridad)}">${data.prioridad}</span>
+                <span class="badge bg-secondary">${data.estado}</span>
+                <p class="text-muted mt-2"><small>${new Date(data.fecha).toLocaleString()}</small></p>
+              </div>
+            </div>`;
+          ticketList.appendChild(card);
+        });
+      });
+    }
+
+    function getBadgeColor(prioridad) {
+      switch (prioridad) {
+        case 'alta': return 'danger';
+        case 'media': return 'warning';
+        case 'baja': return 'success';
+        default: return 'secondary';
+      }
+    }
+  </script>
+</body>
+</html>
